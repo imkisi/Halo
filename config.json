@@ -1,0 +1,61 @@
+{
+  "theme": "dark",
+  "base_radius": 80,
+  "actions": [
+    {
+      "label": "Play/Pause",
+      "icon": "play.svg",
+      "type": "hotkey",
+      "value": "playpause",
+      "category": "MEDIA & VOLUME"
+    },
+    {
+      "label": "New Note",
+      "icon": "note.svg",
+      "type": "hotkey",
+      "value": "win+n",
+      "category": "SYSTEM"
+    },
+    {
+      "category": "NAVIGATION",
+      "icon": "taskview.svg",
+      "label": "Task View",
+      "type": "hotkey",
+      "value": "win+tab"
+    },
+    {
+      "label": "Lock Workstation",
+      "icon": "lock.svg",
+      "type": "hotkey",
+      "value": "win+l",
+      "category": "SYSTEM"
+    },
+    {
+      "label": "Halo Settings",
+      "type": "internal",
+      "value": "open_settings",
+      "category": "SYSTEM"
+    },
+    {
+      "label": "Screenshot",
+      "icon": "screenshot.svg",
+      "type": "hotkey",
+      "value": "win+shift+s",
+      "category": "NAVIGATION"
+    },
+    {
+      "label": "Emoji Panel",
+      "icon": "emoji.svg",
+      "type": "hotkey",
+      "value": "win+.",
+      "category": "KEYBOARD"
+    },
+    {
+      "label": "File Explorer",
+      "icon": "folder.svg",
+      "type": "hotkey",
+      "value": "win+e",
+      "category": "OPEN"
+    }
+  ]
+}
