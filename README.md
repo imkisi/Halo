@@ -74,7 +74,7 @@ The easiest way to get started without installing Python:
 
 ````powershell
 # Clone the repository
-git clone [https://github.com/your-username/Halo.git](https://github.com/your-username/Halo.git)
+git clone [https://github.com/imkisi/Halo.git](https://github.com/imkisi/Halo.git)
 cd Halo
 
 # Install required dependencies
