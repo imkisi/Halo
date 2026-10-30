@@ -1,61 +1,206 @@
 {
-  "theme": "dark",
-  "base_radius": 80,
-  "actions": [
+  "theme": "light",
+  "base_radius": 120,
+  "active_app_id": "default",
+  "apps": [
     {
-      "label": "Play/Pause",
-      "icon": "play.svg",
-      "type": "hotkey",
-      "value": "playpause",
-      "category": "MEDIA & VOLUME"
+      "id": "default",
+      "name": "Default",
+      "executable": "*",
+      "icon": "default",
+      "actions": [
+        {
+          "label": "Play/Pause",
+          "icon": "play.svg",
+          "type": "hotkey",
+          "value": "playpause",
+          "category": "MEDIA & VOLUME"
+        },
+        {
+          "label": "New Note",
+          "icon": "note.svg",
+          "type": "hotkey",
+          "value": "win+n",
+          "category": "SYSTEM"
+        },
+        {
+          "label": "Task View",
+          "icon": "taskview.svg",
+          "type": "hotkey",
+          "value": "win+tab",
+          "category": "NAVIGATION"
+        },
+        {
+          "label": "Lock Workstation",
+          "icon": "lock.svg",
+          "type": "hotkey",
+          "value": "win+l",
+          "category": "SYSTEM"
+        },
+        {
+          "label": "Halo Settings",
+          "icon": "app_icon.png",
+          "type": "internal",
+          "value": "open_settings",
+          "category": "SYSTEM"
+        },
+        {
+          "label": "Screenshot",
+          "icon": "screenshot.svg",
+          "type": "hotkey",
+          "value": "win+shift+s",
+          "category": "NAVIGATION"
+        },
+        {
+          "label": "Emoji Panel",
+          "icon": "emoji.svg",
+          "type": "hotkey",
+          "value": "win+.",
+          "category": "KEYBOARD"
+        },
+        {
+          "label": "File Explorer",
+          "icon": "folder.svg",
+          "type": "hotkey",
+          "value": "win+e",
+          "category": "OPEN"
+        }
+      ]
     },
     {
-      "label": "New Note",
-      "icon": "note.svg",
-      "type": "hotkey",
-      "value": "win+n",
-      "category": "SYSTEM"
+      "id": "photoshop",
+      "name": "Photoshop",
+      "executable": "Photoshop.exe",
+      "icon": "photoshop",
+      "actions": [
+        {
+          "label": "Play/Pause",
+          "icon": "play.svg",
+          "type": "hotkey",
+          "value": "space",
+          "category": "MEDIA & VOLUME"
+        },
+        {
+          "label": "New Layer",
+          "icon": "note.svg",
+          "type": "hotkey",
+          "value": "ctrl+shift+n",
+          "category": "SYSTEM"
+        },
+        {
+          "label": "Free Transform",
+          "icon": "taskview.svg",
+          "type": "hotkey",
+          "value": "ctrl+t",
+          "category": "NAVIGATION"
+        },
+        {
+          "label": "Deselect",
+          "icon": "lock.svg",
+          "type": "hotkey",
+          "value": "ctrl+d",
+          "category": "SYSTEM"
+        },
+        {
+          "label": "Halo Settings",
+          "icon": "app_icon.png",
+          "type": "internal",
+          "value": "open_settings",
+          "category": "SYSTEM"
+        },
+        {
+          "label": "Export As",
+          "icon": "screenshot.svg",
+          "type": "hotkey",
+          "value": "ctrl+alt+shift+w",
+          "category": "NAVIGATION"
+        },
+        {
+          "label": "Brush Tool",
+          "icon": "emoji.svg",
+          "type": "hotkey",
+          "value": "b",
+          "category": "KEYBOARD"
+        },
+        {
+          "label": "File Explorer",
+          "icon": "folder.svg",
+          "type": "hotkey",
+          "value": "win+e",
+          "category": "OPEN"
+        }
+      ]
     },
     {
-      "category": "NAVIGATION",
-      "icon": "taskview.svg",
-      "label": "Task View",
-      "type": "hotkey",
-      "value": "win+tab"
-    },
+      "id": "aftereffects",
+      "name": "After Effects",
+      "executable": "AfterFX.exe",
+      "icon": "aftereffects",
+      "actions": [
+        {
+          "label": "Play/Pause RAM",
+          "icon": "play.svg",
+          "type": "hotkey",
+          "value": "space",
+          "category": "MEDIA & VOLUME"
+        },
+        {
+          "label": "Split Layer",
+          "icon": "note.svg",
+          "type": "hotkey",
+          "value": "ctrl+shift+d",
+          "category": "SYSTEM"
+        },
+        {
+          "label": "Easy Ease",
+          "icon": "taskview.svg",
+          "type": "hotkey",
+          "value": "f9",
+          "category": "NAVIGATION"
+        },
+        {
+          "label": "Keyframe Velocity",
+          "icon": "lock.svg",
+          "type": "hotkey",
+          "value": "ctrl+shift+k",
+          "category": "SYSTEM"
+        },
+        {
+          "label": "Halo Settings",
+          "icon": "app_icon.png",
+          "type": "internal",
+          "value": "open_settings",
+          "category": "SYSTEM"
+        },
+        {
+          "label": "Composition",
+          "icon": "screenshot.svg",
+          "type": "hotkey",
+          "value": "ctrl+k",
+          "category": "NAVIGATION"
+        },
+        {
+          "label": "Render Queue",
+          "icon": "folder.svg",
+          "type": "hotkey",
+          "value": "ctrl+m",
+          "category": "OPEN"
+        },
+        {
+          "label": "Fit to Comp",
+          "icon": "desktop.svg",
+          "type": "hotkey",
+          "value": "ctrl+alt+f",
+          "category": "SYSTEM"
+        }
+      ]
+    }
+  ],
+  "custom_shortcuts": [
     {
-      "label": "Lock Workstation",
-      "icon": "lock.svg",
-      "type": "hotkey",
-      "value": "win+l",
-      "category": "SYSTEM"
-    },
-    {
-      "label": "Halo Settings",
-      "type": "internal",
-      "value": "open_settings",
-      "category": "SYSTEM"
-    },
-    {
-      "label": "Screenshot",
-      "icon": "screenshot.svg",
-      "type": "hotkey",
-      "value": "win+shift+s",
-      "category": "NAVIGATION"
-    },
-    {
-      "label": "Emoji Panel",
-      "icon": "emoji.svg",
-      "type": "hotkey",
-      "value": "win+.",
-      "category": "KEYBOARD"
-    },
-    {
-      "label": "File Explorer",
-      "icon": "folder.svg",
-      "type": "hotkey",
-      "value": "win+e",
-      "category": "OPEN"
+      "label": "Cmd+Shift+=",
+      "value": "ctrl+shift+=",
+      "category": "CUSTOM"
     }
   ]
 }
