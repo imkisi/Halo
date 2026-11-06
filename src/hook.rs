@@ -1,3 +1,4 @@
+use eframe::egui;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Mutex;
@@ -21,15 +22,13 @@ pub enum UserEvent {
 }
 
 static LAST_CLICK_TIME: Mutex<Option<Instant>> = Mutex::new(None);
-static EVENT_SENDER: Mutex<Option<Sender<UserEvent>>> = Mutex::new(None);
+static EVENT_SENDER: Mutex<Option<(Sender<UserEvent>, egui::Context)>> = Mutex::new(None);
 static HOOK_HANDLE: AtomicUsize = AtomicUsize::new(0);
 
-const DOUBLE_CLICK_GAP_MS: u128 = 350;
-
-pub fn start_mouse_hook(sender: Sender<UserEvent>) {
+pub fn start_mouse_hook(sender: Sender<UserEvent>, ctx: egui::Context) {
     {
         let mut s = EVENT_SENDER.lock().unwrap();
-        *s = Some(sender);
+        *s = Some((sender, ctx));
     }
 
     thread::spawn(|| unsafe {
@@ -59,8 +58,12 @@ unsafe extern "system" fn mouse_ll_proc(ncode: i32, wparam: WPARAM, lparam: LPAR
         let now = Instant::now();
         let mut last_click = LAST_CLICK_TIME.lock().unwrap();
 
+        // Use Windows system double click threshold or default to 450ms
+        let system_gap = GetDoubleClickTime();
+        let gap_ms = if system_gap > 0 { system_gap as u128 } else { 450 };
+
         let is_double_click = if let Some(prev) = *last_click {
-            now.duration_since(prev).as_millis() <= DOUBLE_CLICK_GAP_MS
+            now.duration_since(prev).as_millis() <= gap_ms
         } else {
             false
         };
@@ -73,12 +76,14 @@ unsafe extern "system" fn mouse_ll_proc(ncode: i32, wparam: WPARAM, lparam: LPAR
             let active_proc = get_active_process_name();
 
             let sender_opt = EVENT_SENDER.lock().unwrap();
-            if let Some(sender) = sender_opt.as_ref() {
+            if let Some((sender, ctx)) = sender_opt.as_ref() {
                 let _ = sender.send(UserEvent::ShowRadial {
                     x: pt.x,
                     y: pt.y,
                     process_name: active_proc,
                 });
+                // Crucial for instantaneous responsiveness: wake up egui event loop immediately!
+                ctx.request_repaint();
             }
         } else {
             *last_click = Some(now);

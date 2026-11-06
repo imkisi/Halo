@@ -38,11 +38,10 @@ struct HaloApp {
     settings_visible: bool,
     active_process: String,
     rx: Receiver<UserEvent>,
-    tx: Sender<UserEvent>,
 }
 
 impl HaloApp {
-    fn new(config: AppConfig, rx: Receiver<UserEvent>, tx: Sender<UserEvent>) -> Self {
+    fn new(config: AppConfig, rx: Receiver<UserEvent>) -> Self {
         let settings_state = SettingsState::new(&config);
         Self {
             config,
@@ -51,7 +50,6 @@ impl HaloApp {
             settings_visible: false,
             active_process: String::new(),
             rx,
-            tx,
         }
     }
 }
@@ -150,20 +148,15 @@ impl eframe::App for HaloApp {
             );
         }
 
-        // Keep polling if an active window is showing, otherwise sleep
+        // Smooth 60fps tracking when overlay or settings is active
         if self.radial_visible || self.settings_visible {
             ctx.request_repaint_after(Duration::from_millis(16));
-        } else {
-            ctx.request_repaint_after(Duration::from_millis(100));
         }
     }
 }
 
 fn main() -> Result<(), eframe::Error> {
     let (tx, rx) = channel::<UserEvent>();
-
-    // Start background global mouse hook for double Middle Mouse Button clicks
-    start_mouse_hook(tx.clone());
 
     // System Tray Menu setup
     let tray_menu = Menu::new();
@@ -181,29 +174,9 @@ fn main() -> Result<(), eframe::Error> {
     }
     let _tray_icon: Option<TrayIcon> = tray_builder.build().ok();
 
-    // Spawn tray event listener thread
-    let tx_tray = tx.clone();
     let settings_id = item_settings.id().clone();
     let toggle_id = item_toggle.id().clone();
     let exit_id = item_exit.id().clone();
-
-    thread::spawn(move || {
-        let menu_channel = muda::MenuEvent::receiver();
-        while let Ok(event) = menu_channel.recv() {
-            if event.id == settings_id {
-                let _ = tx_tray.send(UserEvent::OpenSettings);
-            } else if event.id == toggle_id {
-                let _ = tx_tray.send(UserEvent::ShowRadial {
-                    x: 600,
-                    y: 400,
-                    process_name: String::new(),
-                });
-            } else if event.id == exit_id {
-                let _ = tx_tray.send(UserEvent::Quit);
-                break;
-            }
-        }
-    });
 
     let config = load_config();
 
@@ -222,6 +195,35 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "Halo",
         native_options,
-        Box::new(move |_cc| Ok(Box::new(HaloApp::new(config, rx, tx)))),
+        Box::new(move |cc| {
+            // Start background global mouse hook and link egui_ctx for 0-latency wakeups
+            start_mouse_hook(tx.clone(), cc.egui_ctx.clone());
+
+            // Spawn tray event listener thread with egui_ctx wakeup
+            let tx_tray = tx.clone();
+            let ctx_tray = cc.egui_ctx.clone();
+            thread::spawn(move || {
+                let menu_channel = muda::MenuEvent::receiver();
+                while let Ok(event) = menu_channel.recv() {
+                    if event.id == settings_id {
+                        let _ = tx_tray.send(UserEvent::OpenSettings);
+                        ctx_tray.request_repaint();
+                    } else if event.id == toggle_id {
+                        let _ = tx_tray.send(UserEvent::ShowRadial {
+                            x: 600,
+                            y: 400,
+                            process_name: String::new(),
+                        });
+                        ctx_tray.request_repaint();
+                    } else if event.id == exit_id {
+                        let _ = tx_tray.send(UserEvent::Quit);
+                        ctx_tray.request_repaint();
+                        break;
+                    }
+                }
+            });
+
+            Ok(Box::new(HaloApp::new(config, rx)))
+        }),
     )
 }
