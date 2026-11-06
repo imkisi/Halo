@@ -183,9 +183,9 @@ fn main() -> Result<(), eframe::Error> {
 
     // Spawn tray event listener thread
     let tx_tray = tx.clone();
-    let settings_id = item_settings.id();
-    let toggle_id = item_toggle.id();
-    let exit_id = item_exit.id();
+    let settings_id = item_settings.id().clone();
+    let toggle_id = item_toggle.id().clone();
+    let exit_id = item_exit.id().clone();
 
     thread::spawn(move || {
         let menu_channel = muda::MenuEvent::receiver();
