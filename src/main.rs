@@ -214,7 +214,7 @@ fn main() -> Result<(), eframe::Error> {
             .with_inner_size([520.0, 520.0])
             .with_transparent(true)
             .with_decorations(false)
-            .with_always_on_top(true)
+            .with_always_on_top()
             .with_visible(false),
         ..Default::default()
     };

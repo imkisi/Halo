@@ -1,5 +1,5 @@
 use eframe::egui::{
-    self, Align2, Color32, FontId, Pos2, Rect, Rounding, Stroke, Vec2,
+    self, Align2, Color32, FontId, Pos2, Stroke, Vec2,
 };
 use std::f32::consts::PI;
 
@@ -200,7 +200,7 @@ pub fn render_settings_ui(
 
                 let stroke_color = if is_selected || is_hovered { accent_blue } else { Color32::GRAY };
                 painter.circle_filled(slot_pos, slot_radius, slot_bg);
-                painter.circle_stroke(slot_pos, slot_radius, Stroke::new(if is_selected { 3.0 } else { 1.5 }, stroke_color));
+                painter.circle_stroke(slot_pos, slot_radius, Stroke::new(if is_selected { 3.0_f32 } else { 1.5_f32 }, stroke_color));
 
                 let glyph = icon_glyph(&act.icon);
                 painter.text(slot_pos, Align2::CENTER_CENTER, glyph, FontId::proportional(16.0), if is_selected { accent_blue } else { Color32::WHITE });

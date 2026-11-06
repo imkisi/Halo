@@ -80,7 +80,7 @@ pub fn render_radial_wheel(
 
         let bg_color = slot_bg;
         let stroke_color = if is_hovered { accent_blue } else { slot_border };
-        let stroke_width = if is_hovered { 3.0 } else { 2.0 };
+        let stroke_width: f32 = if is_hovered { 3.0_f32 } else { 2.0_f32 };
         let fg_color = if is_hovered { accent_blue } else { slot_fg };
 
         // Outer Slot Circle
