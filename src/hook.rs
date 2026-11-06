@@ -1,8 +1,8 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::Sender;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Instant;
-use tao::event_loop::EventLoopProxy;
 use windows::Win32::Foundation::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
@@ -16,24 +16,20 @@ pub enum UserEvent {
         process_name: String,
     },
     OpenSettings,
-    MinimizeSettings,
-    CloseSettings,
-    AppFileSelected(String),
-    ReloadRunningApps,
     CloseRadial,
     Quit,
 }
 
 static LAST_CLICK_TIME: Mutex<Option<Instant>> = Mutex::new(None);
-static EVENT_PROXY: Mutex<Option<EventLoopProxy<UserEvent>>> = Mutex::new(None);
+static EVENT_SENDER: Mutex<Option<Sender<UserEvent>>> = Mutex::new(None);
 static HOOK_HANDLE: AtomicUsize = AtomicUsize::new(0);
 
 const DOUBLE_CLICK_GAP_MS: u128 = 350;
 
-pub fn start_mouse_hook(proxy: EventLoopProxy<UserEvent>) {
+pub fn start_mouse_hook(sender: Sender<UserEvent>) {
     {
-        let mut p = EVENT_PROXY.lock().unwrap();
-        *p = Some(proxy);
+        let mut s = EVENT_SENDER.lock().unwrap();
+        *s = Some(sender);
     }
 
     thread::spawn(|| unsafe {
@@ -76,9 +72,9 @@ unsafe extern "system" fn mouse_ll_proc(ncode: i32, wparam: WPARAM, lparam: LPAR
             let _ = GetCursorPos(&mut pt);
             let active_proc = get_active_process_name();
 
-            let proxy_opt = EVENT_PROXY.lock().unwrap();
-            if let Some(proxy) = proxy_opt.as_ref() {
-                let _ = proxy.send_event(UserEvent::ShowRadial {
+            let sender_opt = EVENT_SENDER.lock().unwrap();
+            if let Some(sender) = sender_opt.as_ref() {
+                let _ = sender.send(UserEvent::ShowRadial {
                     x: pt.x,
                     y: pt.y,
                     process_name: active_proc,

@@ -6,25 +6,19 @@ mod input;
 mod process;
 mod ui;
 
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
+use std::time::Duration;
 
-use config::{load_config, save_config, AppConfig};
+use config::{load_config, AppConfig};
 use hook::{start_mouse_hook, UserEvent};
 use input::send_hotkey;
-use process::get_running_apps;
-use ui::{get_radial_html, get_settings_html, APP_ICON_BASE64};
+use ui::{render_radial_wheel, render_settings_ui, RadialResult, SettingsState};
 
+use eframe::egui::{self, ViewportBuilder, ViewportCommand, ViewportId};
 use image::GenericImageView;
 use muda::{Menu, MenuItem};
-use tao::{
-    dpi::{LogicalPosition, LogicalSize},
-    event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoopBuilder},
-    window::WindowBuilder,
-};
 use tray_icon::{TrayIcon, TrayIconBuilder};
-use wry::WebViewBuilder;
 
 fn load_tray_icon() -> Option<tray_icon::Icon> {
     let png_bytes = include_bytes!("../assets/app_icon.png");
@@ -37,18 +31,145 @@ fn load_tray_icon() -> Option<tray_icon::Icon> {
     }
 }
 
-fn main() {
-    let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
-    let proxy = event_loop.create_proxy();
+struct HaloApp {
+    config: AppConfig,
+    settings_state: SettingsState,
+    radial_visible: bool,
+    settings_visible: bool,
+    active_process: String,
+    rx: Receiver<UserEvent>,
+    tx: Sender<UserEvent>,
+}
 
-    let config_arc = Arc::new(Mutex::new(load_config()));
+impl HaloApp {
+    fn new(config: AppConfig, rx: Receiver<UserEvent>, tx: Sender<UserEvent>) -> Self {
+        let settings_state = SettingsState::new(&config);
+        Self {
+            config,
+            settings_state,
+            radial_visible: false,
+            settings_visible: false,
+            active_process: String::new(),
+            rx,
+            tx,
+        }
+    }
+}
+
+impl eframe::App for HaloApp {
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        egui::Color32::TRANSPARENT.to_normalized_gamma_f32()
+    }
+
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Handle incoming events from mouse hook and tray menu
+        while let Ok(event) = self.rx.try_recv() {
+            match event {
+                UserEvent::ShowRadial { x, y, process_name } => {
+                    self.radial_visible = true;
+                    self.active_process = process_name;
+                    let pos_x = (x - 260).max(0);
+                    let pos_y = (y - 260).max(0);
+                    ctx.send_viewport_cmd(ViewportCommand::OuterPosition(egui::pos2(pos_x as f32, pos_y as f32)));
+                    ctx.send_viewport_cmd(ViewportCommand::Visible(true));
+                    ctx.send_viewport_cmd(ViewportCommand::Focus);
+                    ctx.request_repaint();
+                }
+                UserEvent::OpenSettings => {
+                    self.settings_visible = true;
+                    self.radial_visible = false;
+                    ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+                    ctx.request_repaint();
+                }
+                UserEvent::CloseRadial => {
+                    self.radial_visible = false;
+                    ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+                }
+                UserEvent::Quit => {
+                    ctx.send_viewport_cmd(ViewportCommand::Close);
+                }
+            }
+        }
+
+        // 1. Render Radial Overlay (Main Window)
+        if self.radial_visible {
+            let profile = self.config.get_profile_for_executable(&self.active_process).clone();
+            let theme = self.config.theme.clone();
+            let radius = self.config.base_radius as f32;
+
+            egui::CentralPanel::default()
+                .frame(egui::Frame::none())
+                .show(ctx, |ui| {
+                    let res = render_radial_wheel(ui, &profile, &theme, radius);
+                    match res {
+                        RadialResult::Execute(act) => {
+                            self.radial_visible = false;
+                            ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+
+                            if act.r#type == "internal" && act.value == "open_settings" {
+                                self.settings_visible = true;
+                            } else if act.r#type == "hotkey" {
+                                let val_str = act.value.clone();
+                                thread::spawn(move || {
+                                    thread::sleep(Duration::from_millis(60));
+                                    send_hotkey(&val_str);
+                                });
+                            }
+                        }
+                        RadialResult::Close => {
+                            self.radial_visible = false;
+                            ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+                        }
+                        RadialResult::None => {}
+                    }
+                });
+
+            if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+                self.radial_visible = false;
+                ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+            }
+        }
+
+        // 2. Render Settings Window (Secondary Viewport)
+        if self.settings_visible {
+            ctx.show_viewport_immediate(
+                ViewportId::from_hash_of("halo_settings_window"),
+                ViewportBuilder::default()
+                    .with_title("Halo Settings")
+                    .with_inner_size([960.0, 640.0])
+                    .with_resizable(true),
+                |ctx, _class| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        render_settings_ui(ui, &mut self.config, &mut self.settings_state);
+                    });
+
+                    if ctx.input(|i| i.viewport().close_requested()) {
+                        self.settings_visible = false;
+                    }
+                },
+            );
+        }
+
+        // Keep polling if an active window is showing, otherwise sleep
+        if self.radial_visible || self.settings_visible {
+            ctx.request_repaint_after(Duration::from_millis(16));
+        } else {
+            ctx.request_repaint_after(Duration::from_millis(100));
+        }
+    }
+}
+
+fn main() -> Result<(), eframe::Error> {
+    let (tx, rx) = channel::<UserEvent>();
+
+    // Start background global mouse hook for double Middle Mouse Button clicks
+    start_mouse_hook(tx.clone());
 
     // System Tray Menu setup
     let tray_menu = Menu::new();
     let item_settings = MenuItem::new("Halo Settings", true, None);
     let item_toggle = MenuItem::new("Toggle Radial Menu", true, None);
     let item_exit = MenuItem::new("Exit", true, None);
-
     let _ = tray_menu.append_items(&[&item_settings, &item_toggle, &item_exit]);
 
     let mut tray_builder = TrayIconBuilder::new()
@@ -58,233 +179,49 @@ fn main() {
     if let Some(icon) = load_tray_icon() {
         tray_builder = tray_builder.with_icon(icon);
     }
-
     let _tray_icon: Option<TrayIcon> = tray_builder.build().ok();
 
-    // 1. Radial Overlay Window
-    let radial_window = WindowBuilder::new()
-        .with_title("Halo Radial")
-        .with_inner_size(LogicalSize::new(520.0, 520.0))
-        .with_transparent(true)
-        .with_decorations(false)
-        .with_always_on_top(true)
-        .with_visible(false)
-        .build(&event_loop)
-        .expect("Failed to create radial window");
+    // Spawn tray event listener thread
+    let tx_tray = tx.clone();
+    let settings_id = item_settings.id();
+    let toggle_id = item_toggle.id();
+    let exit_id = item_exit.id();
 
-    let radial_proxy = proxy.clone();
-
-    let radial_webview = WebViewBuilder::new()
-        .with_transparent(true)
-        .with_html(get_radial_html())
-        .with_ipc_handler(move |req| {
-            let body = req.body();
-            if let Ok(val) = serde_json::from_str::<serde_json::Value>(body) {
-                let msg_type = val.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                match msg_type {
-                    "execute" => {
-                        let _ = radial_proxy.send_event(UserEvent::CloseRadial);
-                        if let Some(act) = val.get("action") {
-                            let act_type = act.get("type").and_then(|v| v.as_str()).unwrap_or("hotkey");
-                            let act_val = act.get("value").and_then(|v| v.as_str()).unwrap_or("");
-
-                            if act_type == "internal" && act_val == "open_settings" {
-                                let _ = radial_proxy.send_event(UserEvent::OpenSettings);
-                            } else if act_type == "hotkey" {
-                                let val_str = act_val.to_string();
-                                thread::spawn(move || {
-                                    thread::sleep(std::time::Duration::from_millis(60));
-                                    send_hotkey(&val_str);
-                                });
-                            }
-                        }
-                    }
-                    "close" => {
-                        let _ = radial_proxy.send_event(UserEvent::CloseRadial);
-                    }
-                    _ => {}
-                }
-            }
-        })
-        .build(&radial_window)
-        .expect("Failed to create radial webview");
-
-    // 2. Settings Window
-    let settings_window = WindowBuilder::new()
-        .with_title("Halo Settings")
-        .with_inner_size(LogicalSize::new(980.0, 640.0))
-        .with_decorations(false)
-        .with_visible(false)
-        .build(&event_loop)
-        .expect("Failed to create settings window");
-
-    let settings_proxy = proxy.clone();
-    let settings_config = Arc::clone(&config_arc);
-
-    let settings_webview = WebViewBuilder::new()
-        .with_html(get_settings_html())
-        .with_ipc_handler(move |req| {
-            let body = req.body();
-            if let Ok(val) = serde_json::from_str::<serde_json::Value>(body) {
-                let msg_type = val.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                match msg_type {
-                    "save_config" => {
-                        if let Some(cfg_val) = val.get("config") {
-                            if let Ok(new_cfg) = serde_json::from_value::<AppConfig>(cfg_val.clone()) {
-                                let _ = save_config(&new_cfg);
-                                let mut c = settings_config.lock().unwrap();
-                                *c = new_cfg;
-                            }
-                        }
-                    }
-                    "get_running_apps" => {
-                        let _ = settings_proxy.send_event(UserEvent::ReloadRunningApps);
-                    }
-                    "browse_app" => {
-                        let sp = settings_proxy.clone();
-                        thread::spawn(move || {
-                            if let Some(file) = rfd::FileDialog::new()
-                                .add_filter("Applications", &["exe"])
-                                .pick_file()
-                            {
-                                if let Some(file_name) = file.file_name().and_then(|f| f.to_str()) {
-                                    let stem = file.file_stem().and_then(|s| s.to_str()).unwrap_or(file_name);
-                                    let app_obj = serde_json::json!({
-                                        "name": stem,
-                                        "executable": file_name,
-                                        "title": stem
-                                    });
-                                    let _ = sp.send_event(UserEvent::AppFileSelected(app_obj.to_string()));
-                                }
-                            }
-                        });
-                    }
-                    "minimize_window" => {
-                        let _ = settings_proxy.send_event(UserEvent::MinimizeSettings);
-                    }
-                    "close_window" => {
-                        let _ = settings_proxy.send_event(UserEvent::CloseSettings);
-                    }
-                    _ => {}
-                }
-            }
-        })
-        .build(&settings_window)
-        .expect("Failed to create settings webview");
-
-    let radial_window_id = radial_window.id();
-    let settings_window_id = settings_window.id();
-
-    // Start background global mouse hook for double Middle Mouse Button clicks
-    start_mouse_hook(proxy.clone());
-
-    event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Wait;
-
-        // Check tray menu clicks
-        if let Ok(menu_event) = muda::MenuEvent::receiver().try_recv() {
-            if menu_event.id == item_settings.id() {
-                let _ = proxy.send_event(UserEvent::OpenSettings);
-            } else if menu_event.id == item_toggle.id() {
-                let _ = proxy.send_event(UserEvent::ShowRadial {
+    thread::spawn(move || {
+        let menu_channel = muda::MenuEvent::receiver();
+        while let Ok(event) = menu_channel.recv() {
+            if event.id == settings_id {
+                let _ = tx_tray.send(UserEvent::OpenSettings);
+            } else if event.id == toggle_id {
+                let _ = tx_tray.send(UserEvent::ShowRadial {
                     x: 600,
                     y: 400,
                     process_name: String::new(),
                 });
-            } else if menu_event.id == item_exit.id() {
-                *control_flow = ControlFlow::Exit;
+            } else if event.id == exit_id {
+                let _ = tx_tray.send(UserEvent::Quit);
+                break;
             }
-        }
-
-        match event {
-            Event::UserEvent(user_event) => match user_event {
-                UserEvent::ShowRadial { x, y, process_name } => {
-                    let cfg = config_arc.lock().unwrap();
-                    let profile = cfg.get_profile_for_executable(&process_name);
-
-                    let payload = serde_json::json!({
-                        "theme": cfg.theme,
-                        "base_radius": cfg.base_radius,
-                        "app_name": profile.name,
-                        "actions": profile.actions,
-                        "app_icon_base64": APP_ICON_BASE64,
-                    });
-
-                    let js = format!("window.updateRadial({});", payload);
-                    let _ = radial_webview.evaluate_script(&js);
-
-                    // Position radial overlay centered at cursor (x, y)
-                    let pos_x = (x - 260).max(0);
-                    let pos_y = (y - 260).max(0);
-                    radial_window.set_outer_position(LogicalPosition::new(pos_x as f64, pos_y as f64));
-                    radial_window.set_visible(true);
-                    radial_window.set_focus();
-                }
-                UserEvent::OpenSettings => {
-                    let cfg = config_arc.lock().unwrap();
-                    let payload = serde_json::json!({
-                        "theme": cfg.theme,
-                        "base_radius": cfg.base_radius,
-                        "active_app_id": cfg.active_app_id,
-                        "apps": cfg.apps,
-                        "custom_shortcuts": cfg.custom_shortcuts,
-                        "app_icon_base64": APP_ICON_BASE64,
-                    });
-
-                    let js = format!("window.loadSettingsData({});", payload);
-                    let _ = settings_webview.evaluate_script(&js);
-
-                    settings_window.set_visible(true);
-                    settings_window.set_minimized(false);
-                    settings_window.set_focus();
-                }
-                UserEvent::MinimizeSettings => {
-                    settings_window.set_minimized(true);
-                }
-                UserEvent::CloseSettings => {
-                    settings_window.set_visible(false);
-                }
-                UserEvent::CloseRadial => {
-                    radial_window.set_visible(false);
-                }
-                UserEvent::ReloadRunningApps => {
-                    let apps = get_running_apps();
-                    if let Ok(json_str) = serde_json::to_string(&apps) {
-                        let js = format!("window.onRunningAppsLoaded({});", json_str);
-                        let _ = settings_webview.evaluate_script(&js);
-                    }
-                }
-                UserEvent::AppFileSelected(app_json) => {
-                    let js = format!("window.onAppFileSelected({});", app_json);
-                    let _ = settings_webview.evaluate_script(&js);
-                }
-                UserEvent::Quit => {
-                    *control_flow = ControlFlow::Exit;
-                }
-            },
-            Event::WindowEvent { window_id, event, .. } => {
-                if window_id == radial_window_id {
-                    match event {
-                        WindowEvent::Focused(focused) => {
-                            if !focused {
-                                radial_window.set_visible(false);
-                            }
-                        }
-                        WindowEvent::CloseRequested => {
-                            radial_window.set_visible(false);
-                        }
-                        _ => {}
-                    }
-                } else if window_id == settings_window_id {
-                    match event {
-                        WindowEvent::CloseRequested => {
-                            settings_window.set_visible(false);
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            _ => {}
         }
     });
+
+    let config = load_config();
+
+    // Native Options for the Radial Overlay (Main Window)
+    let native_options = eframe::NativeOptions {
+        viewport: ViewportBuilder::default()
+            .with_title("Halo Radial")
+            .with_inner_size([520.0, 520.0])
+            .with_transparent(true)
+            .with_decorations(false)
+            .with_always_on_top(true)
+            .with_visible(false),
+        ..Default::default()
+    };
+
+    eframe::run_native(
+        "Halo",
+        native_options,
+        Box::new(move |_cc| Ok(Box::new(HaloApp::new(config, rx, tx)))),
+    )
 }
